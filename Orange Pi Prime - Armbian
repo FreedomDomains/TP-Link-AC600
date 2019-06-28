@@ -6,8 +6,7 @@ Directions for installing the TP-Link AC600 USB wifi adapter on Orange Pi Prime 
   if you already have Armbian running and can verify that you will be able to install the correct headers you can skip to step 
 
   It is assumed you have the software tools to format the micro sd, to burn the Armbian image onto the sd, ssh to access the board,
-  and 7-zip for windows.  I used a windows laptop to download and burn the image and access the ssh into the Orange Pi, but the directions
-  would be similar for other OS's.
+  and 7-zip for windows.  I used a windows laptop to download and burn the image and access the ssh into the Orange Pi, but the        directions would be similar for other OS's.
 
 
 1.  Go to:
@@ -27,16 +26,15 @@ Directions for installing the TP-Link AC600 USB wifi adapter on Orange Pi Prime 
   locate the link: Armbian_5.75_Orangepiprime_Debian_stretch_next_4.19.20.7z, double click on it and save it to your downloads folder
 
 2.  Go into download folder and locate the file. RIGHT click on it and a menu will come up. 
-  Select 7-zip > extract to Armbian_5.75_Orangepiprime_Debian_stretch_next_4.19.20
-   A folder will be created with that LONG name.  Click on the folder and locate a file named "Armbian_5.75_Orangepiprime_Debian_stretch_next_4.19.20.img"
+   Select 7-zip > extract to Armbian_5.75_Orangepiprime_Debian_stretch_next_4.19.20
+   A folder will be created with that LONG name.  Click on the folder and locate a file named              "Armbian_5.75_Orangepiprime_Debian_stretch_next_4.19.20.img"
    You won't do anything with the file quite yet.  You just want to make sure it is there and you can find it.
 
-
 3. Open the balenaEtcher software (it should be on your desktop with the "show icon")  Click "select image" Navigate to your downloads
-   folder, find "Armbian_5.75_Orangepiprime_Debian_stretch_next_4.19.20.img", select it and click "Open"  Make sure that the second option
-   in the balenaEtcher screen shows your micro sd card. If everything looks right, go ahead and click "Flash!"  Insert your mico sd into your Orange Pi.
+   folder, find "Armbian_5.75_Orangepiprime_Debian_stretch_next_4.19.20.img", select it and click "Open"  Make sure that the second        option in the balenaEtcher screen shows your micro sd card. If everything looks right, go ahead and click "Flash!"  Insert your 
+   mico sd into your Orange Pi.
 
-4. SSH into your Orange Pi Prime as root. The default root password for Armbian is "1234".  You will need to change that to a password of your choice.
+4. SSH into your Orange Pi Prime as root. The default root password for Armbian is "1234".  You will need to change that to a password      of your choice.
 
    check running processes to see if Network Manager is on the list:
 

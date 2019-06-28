@@ -1,0 +1,342 @@
+Directions for installing the TP-Link AC600 USB wifi adapter on Orange Pi Prime running Armbian OS:  
+
+  These directions include compiling a driver for the USB, and it is very important to make sure you have the EXACT linux-headers
+  to match the architecture of your board and OS.  If the correct headers are not available anywhere, I would suggest buying a new
+  micro sd card, and installing a version of Armbian that does have the correct headers available.  The instructions start there, but
+  if you already have Armbian running and can verify that you will be able to install the correct headers you can skip to step 
+
+  It is assumed you have the software tools to format the micro sd, to burn the Armbian image onto the sd, ssh to access the board,
+  and 7-zip for windows.  I used a windows laptop to download and burn the image and access the ssh into the Orange Pi, but the 
+  directions would be similar for other OS's.
+
+
+1.  Go to:
+
+  https://www.armbian.com/orange-pi-prime
+
+  Scroll down to Armbian Stretch section and click on direct download.  A pop up box will ask if you want to download.
+  Check and make sure the name of the file ends in "Debian_stretch_next_4.19.20.7z" The 4.19.20 part is important because the
+  version of Armbian that you download must be one that has linux-headers available for download for the EXACT same version.
+
+  Click "ok" in the dialog box, and the file will be saved to your downloads folder (this is a large file, may take a few minutes)
+
+  If you are seeing a version more recent than 4.19.20, cancel the download and go to:
+
+  https://dl.armbian.com/orangepiprime/archive
+
+  locate the link: Armbian_5.75_Orangepiprime_Debian_stretch_next_4.19.20.7z, double click on it and save it to your downloads folder
+
+2.  Go into download folder and locate the file. RIGHT click on it and a menu will come up. 
+    Select 7-zip > extract to Armbian_5.75_Orangepiprime_Debian_stretch_next_4.19.20
+    A folder will be created with that LONG name.  Click on the folder and locate a file named 
+    "Armbian_5.75_Orangepiprime_Debian_stretch_next_4.19.20.img"
+    You won't do anything with the file quite yet.  You just want to make sure it is there and you can find it.
+
+
+3. Open the balenaEtcher software (it should be on your desktop with the "show icon")  Click "select image" Navigate to your downloads
+   folder, find "Armbian_5.75_Orangepiprime_Debian_stretch_next_4.19.20.img", select it and click "Open"  Make sure that the second 
+   option in the balenaEtcher screen shows your micro sd card. If everything looks right, go ahead and click "Flash!"  
+   Insert your mico sd into your Orange Pi.
+
+4. SSH into your Orange Pi Prime as root. The default root password for Armbian is "1234".  You will need to change that to a password 
+   of your choice.
+
+   check running processes to see if Network Manager is on the list:
+
+   root@orangepiprime:~# ps -aux
+   
+   Network Manager interferes with the proper functioning of the wifi driver you are about to install, so it needs to be disabled. 
+   First you need to add your "eth0" interface to "/etc/network/interfaces":
+
+   root@orangepiprime:~# cd /etc/network
+   root@orangepiprime:/etc/network# cp interfaces interfaces.orig
+   root@orangepiprime:/etc/network# nano interfaces
+
+   Inside the file you will see:
+
+   auto lo
+   iface lo inet loopback
+
+   That should stay there. If you have specified a static IP for the Orange Pi in your
+   router, add this stanza, changing the example IP addresses below to the correct ones:
+
+    auto eth0
+    iface eth0 inet static
+        address 192.168.1.100 	## [static IP of orange pi]
+        netmask 255.255.255.0 	## [this will probably stay the same]
+        gateway 192.168.1.1 	## [IP address of your router]
+        dns-nameservers 75.75.75.75  ## [the dns that your router uses]
+
+   If your Orange Pi does not have static IP (it is assigned by router dhcp), add this stanza
+
+    auto eth0
+    allow-hotplug eth0
+    iface eth0 inet dhcp
+
+   Save the file. 
+
+   Specify your router DNS server(s) in resolv.conf:
+   root@orangepiprime:/etc/network# cd ..
+   root@orangepiprime:/etc# cp resolv.conf resolv.conf.orig
+   root@orangepiprime:/etc# nano resolv.conf
+ 
+   Inside that file write:
+
+   search lan
+   nameserver 75.75.75.75   ## [the dns that your router uses]
+
+   Save the file
+
+   Now you can disable Network Manager and reboot the board:
+
+   root@orangepiprime:/etc# cd ~
+   root@orangepiprime:~# systemctl disable network-manager
+   root@orangepiprime:~# shutdown
+   You should wait a minute or so, and then go ahead and power recycle the Orange Pi.
+   SSH back into the Pi and check to make sure that Network Manager does NOT appear on the list of processes:
+
+   root@orangepiprime:~# ps -aux
+
+5.  You can now install the linux-headers. First check your exact architecture:
+
+   root@orangepiprime:~# uname -a 
+
+   the part right after "Linux orangepiprime" should be "4.19.20-sunxi64"
+
+   Update the repositories: 
+
+   root@orangepiprime:~# apt-get update  
+
+   Search to make sure that the linux headers you will need are available:
+   root@orangepiprime:~# apt-cache search linux-headers 
+   make sure you find in list:
+   linux-headers-next-sunxi64 - Linux kernel headers for 4.19.20-sunxi64 on arm64
+
+   If so, go ahead and install the headers:
+
+   root@orangepiprime:~# apt-get install linux-headers-next-sunxi64
+ 
+   Go look in /usr/src  now the correct headers should be there:
+   root@orangepiprime:~# cd /usr/src
+   root@orangepiprime:/usr/src# ls
+
+6. Install some software needed to compile the driver:
+
+    root@orangepiprime:/usr/src# cd ~
+    root@orangepiprime:~# apt-get install mercurial bzr libgmp3-dev
+    root@orangepiprime:~# apt-get install linux-kbuild-4.19
+
+   The following should be up to date and not need to be installed, but if you want to be sure:
+   root@orangepiprime:~# apt-get install binutils bison build-essential curl gcc git make
+
+ 
+7. Get the mt7610u driver from github:
+
+   root@orangepiprime:~# git clone https://github.com/ulli-kroll/mt7610u.git 
+
+8. Go into the mt7610u folder, copy the Makefile (in case you hose it up) and add a line to specify your symvers file:
+
+   root@orangepiprime:~# cd mt7610u 
+   root@orangepiprime:~/mt7610u# cp Makefile Makefile.orig
+   root@orangepiprime:~/mt7610u# nano Makefile
+
+   Inside the file, scroll down to the "WFLAGS" section (around line 72) and add this line before the WFLAGS declarations:
+
+   KBUILD_EXTRA_SYMBOLS :=/usr/src/linux-headers-4.19.20-sunxi64/Module.symvers  
+
+   Save the file.
+
+   (note that if you have a different architecture, the "linux-headers-4.19.20-sunxi64" part may be different. If in doubt,
+    go into "/usr/source" to see the exact name of the directory)
+
+
+9. Before compiling, the header scripts need to be compiled. Leave current directory and go into headers directory, and
+   type "make scripts"
+
+   root@orangepiprime:~/mt7610u# cd ~
+   root@orangepiprime:~# cd /usr/src/linux-headers-4.19.20-sunxi64
+   root@orangepiprime:/usr/src/linux-headers-4.19.20-sunxi64# make scripts
+
+   If you are using the same architecture I used, you will get some errors including:
+
+   scripts/kconfig/conf  --syncconfig Kconfig
+   net/Kconfig:89: can't open file "net/wireguard/Kconfig"
+   scripts/kconfig/Makefile:69: recipe for target 'syncconfig' failed
+
+   You need to have Kconfig disregard the wireguard, which is not present. Go to "net" folder, copy Kconfig file (just in case):
+
+   root@orangepiprime:/usr/src/linux-headers-4.19.20-sunxi64# cd net 
+   root@orangepiprime:/usr/src/linux-headers-4.19.20-sunxi64/net# cp Kconfig Kconfig.orig
+   root@orangepiprime:/usr/src/linux-headers-4.19.20-sunxi64/net# nano Kconfig  
+
+   on line 89 comment out: 
+   ## source "net/wireguard/Kconfig"
+
+   Save file.
+
+    Go back to the main headers folder, and "make scripts" again  (should work this time):
+
+   root@orangepiprime:/usr/src/linux-headers-4.19.20-sunxi64/net# cd ..
+   root@orangepiprime:/usr/src/linux-headers-4.19.20-sunxi64# make scripts
+
+10.  Now it's time to go into the mt7610u driver folder and "make":
+
+   root@orangepiprime:/usr/src/linux-headers-4.19.20-sunxi64# cd ~
+   root@orangepiprime:~# cd mt7610u
+   root@orangepiprime:~/mt7610u# make
+
+   If you get errors about "redeclaration of enumerators, etc ..." that's because "mt7610u/include/rtmp.h"
+   has declared variables which are also declared in headers, so those need to be commented out:
+
+   root@orangepiprime:~/mt7610u# cd include
+   root@orangepiprime:~/mt7610u/include# cp rtmp.h rtmp.h.orig
+   root@orangepiprime:~/mt7610u/include# nano rtmp.h
+
+  inside the file starting around line 5722  comment out this whole enum stanza:
+
+ /*  enum ieee80211_radiotap_type { 
+
+    IEEE80211_RADIOTAP_TSFT = 0,
+    IEEE80211_RADIOTAP_FLAGS = 1,
+    IEEE80211_RADIOTAP_RATE = 2,
+    IEEE80211_RADIOTAP_CHANNEL = 3,
+    IEEE80211_RADIOTAP_FHSS = 4,
+    IEEE80211_RADIOTAP_DBM_ANTSIGNAL = 5,
+    IEEE80211_RADIOTAP_DBM_ANTNOISE = 6,
+    IEEE80211_RADIOTAP_LOCK_QUALITY = 7,
+    IEEE80211_RADIOTAP_TX_ATTENUATION = 8,
+    IEEE80211_RADIOTAP_DB_TX_ATTENUATION = 9,
+    IEEE80211_RADIOTAP_DBM_TX_POWER = 10,
+    IEEE80211_RADIOTAP_ANTENNA = 11,
+    IEEE80211_RADIOTAP_DB_ANTSIGNAL = 12,
+    IEEE80211_RADIOTAP_DB_ANTNOISE = 13 
+
+ }; */
+
+   Save the file. Go back to "mt7610u" folder and try again (should work this time):
+
+   root@orangepiprime:~/mt7610u/include# cd ..
+   root@orangepiprime:~/mt7610u# make
+   
+
+11. Install the firmware: 
+.
+   root@orangepiprime:~/mt7610u# make installfw     
+
+  (this will copy the firmware into your "/lib/firmware" directory.  these are the .bin files)
+
+12. Copy the kernel module into the proper directory:
+
+   root@orangepiprime:~/mt7610u# cp mt7610u.ko /lib/modules/4.19.20-sunxi64/kernel/drivers/net/wireless/
+
+13. Enable the module:
+
+   root@orangepiprime:~/mt7610u# cd ~
+   root@orangepiprime:~# depmod 4.19.20-sunxi64    
+        
+14. Time to reboot and go back in:
+
+    root@orangepiprime:/etc/modprobe.d# cd ~
+    root@orangepiprime:~# shutdown
+
+    SSH back into board and enable mt7610u:
+
+    root@orangepiprime:~# modprobe mt7610u   
+    (IMPORTANT don't add the .ko)
+
+   Check which modules are active:
+
+   root@orangepiprime:~# lsmod
+
+  should show mt7610u in list
+
+15. Get the configuration file in the right place (/etc/Wireless/RT2870STA/RT2870STA.dat):
+    Make directories:
+
+    root@orangepiprime:~# cd /etc
+    root@orangepiprime:/etc# mkdir Wireless
+    root@orangepiprime:/etc# cd Wireless
+    root@orangepiprime:/etc/Wireless# mkdir RT2870STA
+
+   Go back to "mt7610u" folder and copy the .dat file into the path you just made:
+
+    root@orangepiprime:/etc/Wireless# cd ~
+    root@orangepiprime:~# cd mt7610u
+    root@orangepiprime:~/mt7610u# cp RT2870STA.dat /etc/Wireless/RT2870STA/
+  
+16. Make the config file for wpa_supplicant:
+
+    root@orangepiprime:~/mt7610u# cd ~
+    root@orangepiprime:~# cd /etc/wpa_supplicant
+    root@orangepiprime:/etc/wpa_supplicant# nano wpa_supplicant.conf
+
+    inside the file write:
+
+    country=US    ## If outside US, use your country two digit code
+    ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
+    update_config=1
+
+    network={
+        ssid="mywifi"    ## use your actual router SSID
+        key_mgmt=NONE
+	mode=0
+	scan_ssid=1
+    }
+
+   Save the file.
+
+17. Shutdown the router:
+
+    root@orangepiprime:/etc/wpa_supplicant# shutdown
+    Completely shut off power supply, let the router rest a minute or two, then connect power and SSH back in.
+
+18. Start up wpa_supplicant:
+
+    root@orangepiprime:~# wpa_supplicant -Dnl80211 -iwlan0 -c/etc/wpa_supplicant/wpa_supplicant.conf
+
+   you should see the lines:
+   wlan0: Trying to associate with 09:00:f0:78:6e:5c (SSID='MyWifi' freq=2462 MHz)
+   wlan0: Associated with 09:00:f0:78:6e:5c
+   wlan0: CTRL-EVENT-CONNECTED - Connection to 09:00:f0:78:6e:5c completed
+
+The usb stick should light up green
+
+19. Don't do or type anything on this screen (it will break the connection) 
+    Start a new putty session to connect (or if you use something like Tmux even better)
+
+    From the new session, check the active interfaces:
+
+    root@orangepiprime:~# ifconfig
+     
+    you should now see the interface "wlan0" besides the "eth0" and "lo"
+
+    Check the active processes to make sure wpa_supplicant is running:
+
+    root@orangepiprime:~# ps -aux
+
+    If you have trouble getting wpa_supplicant running you can add the -dd flag to get debug information:
+
+    wpa_supplicant -dd -Dnl80211 -iwlan0 -c/etc/wpa_supplicant/wpa_supplicant.conf
+
+20. To make sure your Orange Pi Prime is connected to your router wifi, use "iw": 
+
+    root@orangepiprime:~# iw dev
+
+    You should see something like:
+
+       You should see something like:
+
+   phy#0
+        Interface wlan0
+                ifindex 3
+                wdev 0x1
+                addr f7:de:42:8d:1e:6a
+                ssid mywifi
+                type managed
+                txpower 12.00 dBm
+
+    The "iw" commands can be used to scan and join other hotspots as well as a ton of other functionalities.  
+    If you want to learn more, a good place to start is:   
+
+       https://wireless.wiki.kernel.org/en/users/documentation/iw 
+

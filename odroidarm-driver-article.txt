@@ -1,0 +1,334 @@
+Directions for installing the TP-Link AC600 USB wifi adapter on Odroid-c2 running Armbian
+
+  These directions include compiling a driver for the USB, and it is very important to make sure you have the EXACT linux-headers
+  to match the architecture of your board and OS.  If the correct headers are not available anywhere, I would suggest buying a new
+  micro sd card, and installing a version of Armbian that does have the correct headers available.  The instructions start there, but
+  if you already have Armbian running and can verify that you will be able to install the correct headers you can skip to step 4
+
+  It is assumed you have the software tools to format the micro sd, to burn the Armbian image onto the sd, ssh to access the board,
+  and 7-zip for windows.  I used a windows laptop to download and burn the image and access the ssh into the Odroid-c2, but the directions
+  would be similar for other OS's.
+
+1.  NOTE: I was unable to get the driver working correctly on the very latest Armbian version for Odroidc2. On 4.18.8 the driver compiled
+   easily without any errors (although I did leave some hints for dealing with a couple of errors in case you must use a different Armbian version)
+
+   To get the version that is likely to let you compile the driver go to:
+
+   https://dl.armbian.com/odroidc2/archive/Armbian_5.59_Odroidc2_Debian_stretch_next_4.18.8.7z
+ 
+  A pop up box will ask if you want to download.
+  Check and make sure the name of the file is exactly "Armbian_5.59_Odroidc2_Debian_stretch_next_4.18.8.7z" The version of Armbian 
+  that you download must be one that has linux-headers available for download for the EXACT same version.
+
+  Click "ok" in the dialog box, and the file will be saved to your downloads folder (this is a large file, may take a few minutes)
+
+2.  Go into download folder and locate the file. RIGHT click on it and a menu will come up. 
+  Select 7-zip > extract to Armbian_5.59_Odroidc2_Debian_stretch_next_4.18.8
+   A folder will be created with that LONG name.  Click on the folder and locate a file named "Armbian_5.59_Odroidc2_Debian_stretch_next_4.18.8.img"
+   You won't do anything with the file quite yet.  You just want to make sure it is there and you can find it.
+
+3. Open the balenaEtcher software.  Click "select image" Navigate to your downloads
+   folder, find "Armbian_5.59_Odroidc2_Debian_stretch_next_4.18.8.img", select it and click "Open"  Make sure that the second option
+   in the balenaEtcher screen shows your micro sd card. If everything looks right, go ahead and click "Flash!"  
+   Insert your mico sd into your Odroid.
+
+4. SSH into your Odroid as root. The default root password for Armbian is "1234".  You will need to change that to a password of your choice.
+
+   check running processes to see if Network Manager is on the list:
+
+    ps -aux
+
+   Network Manager interferes with the proper functioning of the wifi driver you are about to install, so it needs to be disabled. 
+   First you need to add your "eth0" interface to "/etc/network/interfaces":
+
+   root@odroidc2:~# cd /etc/network
+   root@odroidc2:/etc/network# cp interfaces interfaces.orig
+   root@odroidc2:/etc/network# nano interfaces
+
+   Inside the file you will see:
+
+   auto lo
+   iface lo inet loopback
+
+   That should stay there. If you have specified a static IP for the Odroid in your
+   router, add this stanza, changing the example IP addresses below to the correct ones:
+
+    auto eth0
+    iface eth0 inet static
+        address 192.168.1.100 	## [static IP of orange pi]
+        netmask 255.255.255.0 	## [this will probably stay the same]
+        gateway 192.168.1.1 	## [IP address of your router]
+        dns-nameservers 75.75.75.75  ## [the dns that your router uses]
+
+   If your Odroid does not have static IP (it is assigned by router dhcp), add this stanza
+
+    auto eth0
+    allow-hotplug eth0
+    iface eth0 inet dhcp
+
+    Save the file.
+
+   Specify your router DNS server(s) in resolv.conf:
+   root@odroidc2:/etc/network# cd ..
+   root@odroidc2:/etc# cp resolv.conf resolv.conf.orig
+   root@odroidc2:/etc# nano resolv.conf
+
+   Inside that file write:
+
+   search lan
+   nameserver 75.75.75.75   ## [the dns that your router uses]
+
+   Save the file.
+
+   Now you can disable Network Manager and reboot the board:
+
+   root@odroidc2:/etc# cd ~
+   root@odroidc2:~# systemctl disable network-manager
+   root@odroidc2:~# shutdown
+   You should wait a minute or so, and then go ahead and power recycle the Odroid.
+   SSH back into the board and check to make sure that Network Manager does NOT appear on the list of processes:
+
+   root@odroidc2:~# ps -aux
+
+5.  You can now install the linux-headers. First check your exact architecture:
+
+    root@odroidc2:~# uname -a
+
+    the part right after "Linux odroidc2" should be "4.18.8-odroidc2"
+
+   Update the repositories: 
+
+   root@odroidc2:~# apt-get update  
+
+   Search to make sure that the linux headers you will need are available:
+   root@odroidc2:~# apt-cache search linux-headers 
+   make sure you find in list:
+
+   linux-headers-next-odroidc2 - Linux kernel headers for 4.18.8-odroidc2 on arm64
+
+   If so, go ahead and install the headers:
+
+   root@odroidc2:~# apt-get install linux-headers-next-odroidc2
+
+   Go look in /usr/src  now the correct headers should be there:
+   root@odroidc2:~# cd /usr/src
+   root@odroidc2:/usr/src# ls
+
+    you should see the folder: linux-headers-4.18.8-odroidc2
+
+6. Install some software needed to compile the driver:
+
+   root@odroidc2:/usr/src# cd ~
+   root@odroidc2:~# apt-get install mercurial bzr libgmp3-dev
+   root@odroidc2:~# apt-get install linux-kbuild-4.19
+
+   The following should be up to date and not need to be installed, but if you want to be sure:
+   root@odroidc2:~# apt-get install binutils bison build-essential curl gcc git make
+
+7.  Get the mt7610u driver from github:
+
+    root@odroidc2:~# git clone https://github.com/FreedomDomains/mt7610u.git
+
+8. Go into the mt7610u folder, copy the Makefile and add a line to specify your symvers file:
+
+   root@odroidc2:~# cd mt7610u 
+   root@odroidc2:~/mt7610u# cp Makefile Makefile.orig
+   root@odroidc2:~/mt7610u# nano Makefile
+
+   Inside the file, scroll down to the "WFLAGS" section (around line 72) and add this line before the WFLAGS declarations:
+
+   KBUILD_EXTRA_SYMBOLS :=/usr/src/linux-headers-4.18.8-odroidc2/Module.symvers  
+
+   Save the file.
+
+   (note that if you have a different architecture, the "linux-headers-4.18.8-odroidc2" part may be different. If in doubt,
+    go into "/usr/src" to see the exact name of the directory)
+
+9. Before compiling, the header scripts need to be compiled. Leave current directory and go into headers directory, and
+   type "make scripts"
+
+   root@odroidc2:~/mt7610u# cd ~
+   root@odroidc2:~# cd /usr/src/linux-headers-4.18.8-odroidc2
+   root@odroidc2:/usr/src/linux-headers-4.18.8-odroidc2# make scripts
+
+   [ SKIP THIS SECTION (unless you get the errors)
+   If you get some errors including:
+
+   scripts/kconfig/conf  --syncconfig Kconfig
+   net/Kconfig:89: can't open file "net/wireguard/Kconfig"
+   scripts/kconfig/Makefile:69: recipe for target 'syncconfig' failed
+
+   You need to have Kconfig disregard the wireguard, which is not present. Go to "net" folder, copy Kconfig file (just in case):
+
+   root@odroidc2:/usr/src/linux-headers-4.18.8-odroidc2# cd net 
+   root@odroidc2:/usr/src/linux-headers-4.18.8-odroidc2/net# cp Kconfig Kconfig.orig
+   root@odroidc2:/usr/src/linux-headers-4.18.8-odroidc2/net# nano Kconfig  
+
+   on line 89 comment out: 
+   ## source "net/wireguard/Kconfig"
+
+   Save file.
+
+    Go back to the main headers folder, and "make scripts" again  (should work this time):
+    
+   root@odroidc2:/usr/src/linux-headers-4.18.8-odroidc2/net# cd ..
+   root@odroidc2:/usr/src/linux-headers-4.18.8-odroidc2# make scripts 
+   END SKIP ]
+
+10.  Now it's time to go into the mt7610u driver folder and "make":
+
+   root@odroidc2:/usr/src/linux-headers-4.18.8-odroidc2# cd ~
+   root@odroidc2:~# cd mt7610u
+   root@odroidc2:~/mt7610u# make
+
+   [ SKIP THIS SECTION (unless you get the errors)
+   If you get errors about "redeclaration of enumerators, etc ..." that's because "mt7610u/include/rtmp.h"
+   has declared variables which are also declared in headers, so those need to be commented out:
+
+   root@odroidc2:~/mt7610u# cd include
+   root@odroidc2:~/mt7610u/include# cp rtmp.h rtmp.h.orig
+   root@odroidc2:~/mt7610u/include# nano rtmp.h
+
+  inside the file starting around line 5722  comment out this whole enum stanza:
+
+ /*  enum ieee80211_radiotap_type { 
+
+    IEEE80211_RADIOTAP_TSFT = 0,
+    IEEE80211_RADIOTAP_FLAGS = 1,
+    IEEE80211_RADIOTAP_RATE = 2,
+    IEEE80211_RADIOTAP_CHANNEL = 3,
+    IEEE80211_RADIOTAP_FHSS = 4,
+    IEEE80211_RADIOTAP_DBM_ANTSIGNAL = 5,
+    IEEE80211_RADIOTAP_DBM_ANTNOISE = 6,
+    IEEE80211_RADIOTAP_LOCK_QUALITY = 7,
+    IEEE80211_RADIOTAP_TX_ATTENUATION = 8,
+    IEEE80211_RADIOTAP_DB_TX_ATTENUATION = 9,
+    IEEE80211_RADIOTAP_DBM_TX_POWER = 10,
+    IEEE80211_RADIOTAP_ANTENNA = 11,
+    IEEE80211_RADIOTAP_DB_ANTSIGNAL = 12,
+    IEEE80211_RADIOTAP_DB_ANTNOISE = 13 
+
+ }; */
+
+   Save the file. Go back to "mt7610u" folder and try again (should work this time):
+
+   root@odroidc2:~/mt7610u/include# cd ..
+   root@odroidc2:~/mt7610u# make
+   END SKIP ]
+
+11. Install the firmware: 
+.
+   root@odroidc2:~/mt7610u# make installfw     
+
+  (this will copy the firmware into your "/lib/firmware" directory.  these are the .bin files)
+
+12. Copy the kernel module into the proper directory:
+
+   root@odroidc2:~/mt7610u# cp mt7610u.ko /lib/modules/4.18.8-odroidc2/kernel/drivers/net/wireless/
+
+13. Enable the module dependencies:
+
+   root@odroidc2:~/mt7610u# cd ~
+   root@odroidc2:~# depmod 4.18.8-odroidc2 
+
+   Enable the module:
+
+   root@odroidc2:~# modprobe mt7610u   (IMPORTANT don't add the .ko)  
+
+14. Time to reboot and go back in:
+
+    root@odroidc2:~# shutdown
+
+    SSH back into board and Check which modules are active:
+
+   root@odroidc2:~# lsmod
+
+  should show mt7610u in list
+
+15. Get the configuration file in the right place (/etc/Wireless/RT2870STA/RT2870STA.dat):
+    Make directories:
+
+    root@odroidc2:~# cd /etc
+    root@odroidc2:/etc# mkdir Wireless
+    root@odroidc2:/etc# cd Wireless
+    root@odroidc2:/etc/Wireless# mkdir RT2870STA
+
+   Go back to "mt7610u" folder and copy the .dat file into the path you just made:
+
+    root@odroidc2:/etc/Wireless# cd ~
+    root@odroidc2:~# cd mt7610u
+    root@odroidc2:~/mt7610u# cp RT2870STA.dat /etc/Wireless/RT2870STA/
+
+16. Make the config file for wpa_supplicant:
+
+    root@odroidc2:~/mt7610u# cd ~
+    root@odroidc2:~# cd /etc/wpa_supplicant
+    root@odroidc2:/etc/wpa_supplicant# nano wpa_supplicant.conf
+
+    inside the file write:
+
+    country=US    ## If outside US, use your country two digit code
+    ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
+    update_config=1
+
+    network={
+        ssid="mywifi"    ## use your actual router SSID
+        key_mgmt=NONE
+	mode=0
+	scan_ssid=1
+    }
+
+   Save the file.
+
+17. Shutdown the router:
+
+    root@odroidc2:/etc/wpa_supplicant# shutdown
+    Completely shut off power supply, let the router rest a minute or two, then connect power and SSH back in.
+
+18. Start up wpa_supplicant:
+
+    root@odroidc2:~# wpa_supplicant -Dnl80211 -iwlan0 -c/etc/wpa_supplicant/wpa_supplicant.conf
+
+   you should see the lines:
+   wlan0: Trying to associate with 09:00:f0:78:6e:5c (SSID='MyWifi' freq=2462 MHz)
+   wlan0: Associated with 09:00:f0:78:6e:5c
+   wlan0: CTRL-EVENT-CONNECTED - Connection to 09:00:f0:78:6e:5c completed
+
+   The usb stick should light up green
+
+19. Don't do or type anything on this screen (it will break the connection) 
+    Start a new putty session to connect (or if you use something like Tmux even better)
+
+    From the new session, check the active interfaces:
+
+    root@odroidc2:~# ifconfig
+     
+    you should now see the interface "wlan0" besides the "eth0" and "lo"
+
+    Check the active processes to make sure wpa_supplicant is running:
+
+    root@odroidc2:~# ps -aux
+
+    If you have trouble getting wpa_supplicant running you can add the -dd flag to get debug information:
+
+    wpa_supplicant -dd -Dnl80211 -iwlan0 -c/etc/wpa_supplicant/wpa_supplicant.conf
+
+20. To make sure your Odroidc2 is connected to your router wifi, use "iw":
+
+   root@odroidc2:~# iw dev
+
+   You should see something like:
+
+   phy#0
+        Interface wlan0
+                ifindex 3
+                wdev 0x1
+                addr f7:de:42:8d:1e:6a
+                ssid mywifi
+                type managed
+
+    The "iw" commands can be used to scan and join other hotspots as well as a ton of other functionalities.  If you want to learn more, 
+      a good place to start is:   
+
+       https://wireless.wiki.kernel.org/en/users/documentation/iw   
+
